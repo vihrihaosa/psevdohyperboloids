@@ -1,0 +1,626 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ============================================================
+# ПАРАМЕТРЫ — МЕНЯТЬ ТОЛЬКО ЗДЕСЬ
+# ============================================================
+a = 1.0
+b = 1.0
+R = 10.0
+
+# R1 — относительный радиус входного окна.
+# Фактический радиус входного окна: R_in = R * R1
+# R1 = 0.0 -> входного окна нет
+# R1 = 0.1 -> радиус входного окна = 0.1 * R
+R1 = 0.1
+
+# R2 — относительная ПОЛНАЯ толщина выходного окна.
+# Фактическая полная толщина: dR_total = R * R2
+# Окно вывода симметрично относительно линии фокусов rho = R:
+# половина открывается со стороны гиперболической воронки,
+# половина — со стороны полутороидального закрытия.
+# R2 = 0.0  -> выходного окна нет
+# R2 = 0.01 -> полная толщина окна = 0.01 * R
+# R2 = 0.2  -> полная толщина окна = 0.2 * R,
+#              по 0.1 * R с каждой стороны линии фокусов
+R2 = 0.01
+
+# ============================================================
+# СТИЛЬ 2D — ТОНКИЕ ЛИНИИ
+# ============================================================
+LW_WALL_2D = 0.75
+LW_TORUS_2D = 0.85
+LW_EDGE_2D = 0.60
+LW_AUX_2D = 0.40
+LW_ARROW_2D = 0.90
+
+FOCUS_MARKER_SIZE = 3.0
+FOCUS_FONT_SIZE = 8
+
+# ============================================================
+# ПРОВЕРКА ПАРАМЕТРОВ И ПРОИЗВОДНЫЕ ВЕЛИЧИНЫ
+# ============================================================
+if a <= 0 or b <= 0 or R <= 0:
+    raise ValueError("a, b, R должны быть положительными.")
+
+if not (0.0 <= R1 <= 1.0):
+    raise ValueError("R1 должен быть в диапазоне 0 <= R1 <= 1.")
+
+if not (0.0 <= R2 < 1.0):
+    raise ValueError("R2 должен быть в диапазоне 0 <= R2 < 1.")
+
+R_in = R * R1
+dR_total = R * R2
+dR_half = 0.5 * dR_total
+
+if dR_half > a:
+    raise ValueError(
+        f"Слишком большое R2: R*R2/2 = {dR_half:.6f}, а малый радиус полутороида a = {a:.6f}. "
+        "Нужно R*R2/2 <= a."
+    )
+
+L = a * np.sqrt(1.0 + (R / b) ** 2)
+
+show_inlet = R_in > 0.0
+show_outlet = dR_total > 0.0
+
+print("=== Входные параметры ===")
+print(f"a = {a}")
+print(f"b = {b}")
+print(f"R = {R}")
+print(f"R1 = {R1} -> R_in = R * R1 = {R_in}")
+print(f"R2 = {R2} -> dR_total = R * R2 = {dR_total}")
+print(f"dR_half = dR_total / 2 = {dR_half}")
+print(f"L = {L:.6f}")
+
+
+# ============================================================
+# ФУНКЦИИ ГЕОМЕТРИИ
+# ============================================================
+def r_horn(x):
+    """
+    Гиперболическая образующая:
+        rho(x) = R - b * sqrt((x/a)^2 - 1)
+    Область:
+        |x| >= a
+    """
+    x = np.asarray(x, dtype=float)
+    val = (x / a) ** 2 - 1.0
+    val = np.maximum(val, 0.0)
+    return R - b * np.sqrt(val)
+
+
+def half_torus_outer_rho(x):
+    """
+    Наружное полутороидальное закрытие.
+    В 2D это две наружные полуокружности:
+        верхняя: rho =  R + sqrt(a^2 - x^2)
+        нижняя: rho = -R - sqrt(a^2 - x^2)
+    при |x| <= a.
+    """
+    x = np.asarray(x, dtype=float)
+    val = a ** 2 - x ** 2
+    val = np.maximum(val, 0.0)
+    return R + np.sqrt(val)
+
+
+def plot_hyperbola_foci(ax):
+    """
+    Фокусы образующих гипербол.
+    Верхняя гипербола:
+        (x/a)^2 - ((rho - R)/b)^2 = 1
+    Нижняя гипербола:
+        (x/a)^2 - ((rho + R)/b)^2 = 1
+    c = sqrt(a^2 + b^2)
+    """
+    c = np.sqrt(a ** 2 + b ** 2)
+
+    foci = [
+        (-c,  R, "F1+"),
+        ( c,  R, "F2+"),
+        (-c, -R, "F1-"),
+        ( c, -R, "F2-"),
+    ]
+
+    for xf, yf, label in foci:
+        ax.plot(xf, yf, "mo", ms=FOCUS_MARKER_SIZE, zorder=10)
+
+        dy = 0.18 if yf > 0 else -0.18
+        va = "bottom" if yf > 0 else "top"
+
+        ax.text(
+            xf,
+            yf + dy,
+            label,
+            color="m",
+            fontsize=FOCUS_FONT_SIZE,
+            ha="center",
+            va=va,
+            fontweight="bold",
+            zorder=11,
+        )
+
+    ax.text(
+        -c,
+        R + 0.50,
+        f"фокусы: c=sqrt(a^2+b^2)={c:.3f}",
+        color="m",
+        fontsize=FOCUS_FONT_SIZE,
+    )
+
+
+# ============================================================
+# ГРАНИЦЫ ОКОН
+# ============================================================
+
+if show_inlet:
+    x_edge_l = -a * np.sqrt(1.0 + ((R - R_in) / b) ** 2)
+else:
+    x_edge_l = -L
+
+if show_outlet:
+    rho_horn_cut = R - dR_half
+    rho_torus_cut = R + dR_half
+    x_horn_out = a * np.sqrt(1.0 + (dR_half / b) ** 2)
+    x_torus_out = np.sqrt(a ** 2 - dR_half ** 2)
+else:
+    rho_horn_cut = R
+    rho_torus_cut = R
+    x_horn_out = a
+    x_torus_out = a
+
+
+# ============================================================
+# РИСУНОК 1: ОБЩЕЕ МЕРИДИОНАЛЬНОЕ СЕЧЕНИЕ
+# ============================================================
+fig, ax = plt.subplots(figsize=(16, 8.5))
+
+# Левая гиперболическая воронка
+x_left = np.linspace(-L, -a, 1800)
+rho_left = r_horn(x_left)
+
+if show_inlet:
+    mask_left = rho_left >= R_in - 1e-12
+else:
+    mask_left = np.ones_like(x_left, dtype=bool)
+
+ax.plot(
+    x_left[mask_left],
+    rho_left[mask_left],
+    color="black",
+    lw=LW_WALL_2D,
+    label="гиперболическая стенка",
+)
+ax.plot(
+    x_left[mask_left],
+    -rho_left[mask_left],
+    color="black",
+    lw=LW_WALL_2D,
+)
+
+# Входное окно
+if show_inlet:
+    ax.plot([x_edge_l, x_edge_l], [-R_in, R_in], color="royalblue", lw=LW_EDGE_2D)
+
+    ax.annotate(
+        f"входное окно In-1\nR_in = R*R1 = {R_in:.3f}",
+        xy=(x_edge_l, 0),
+        xytext=(x_edge_l - 2.8, R_in + 1.2),
+        fontsize=9,
+        color="royalblue",
+        fontweight="bold",
+        arrowprops=dict(arrowstyle="->", color="royalblue", lw=LW_ARROW_2D),
+    )
+
+    ax.annotate(
+        "",
+        xy=(x_edge_l - 0.02, 0.55 * R_in),
+        xytext=(x_edge_l - 2.6, 0.55 * R_in),
+        arrowprops=dict(arrowstyle="->", color="royalblue", lw=LW_ARROW_2D),
+    )
+
+    ax.annotate(
+        "",
+        xy=(x_edge_l - 0.02, -0.55 * R_in),
+        xytext=(x_edge_l - 2.6, -0.55 * R_in),
+        arrowprops=dict(arrowstyle="->", color="royalblue", lw=LW_ARROW_2D),
+    )
+else:
+    ax.text(-L + 0.3, 0.45, "R1=0:\nвходного окна нет", color="royalblue", fontsize=9)
+
+# Правая гиперболическая воронка
+x_right = np.linspace(a, L, 1800)
+rho_right = r_horn(x_right)
+
+if show_outlet:
+    mask_right = rho_right <= rho_horn_cut + 1e-12
+else:
+    mask_right = np.ones_like(x_right, dtype=bool)
+
+ax.plot(x_right[mask_right], rho_right[mask_right], color="black", lw=LW_WALL_2D)
+ax.plot(x_right[mask_right], -rho_right[mask_right], color="black", lw=LW_WALL_2D)
+
+# Линии фокусов и фокусы
+ax.plot([-L, L], [R, R], color="purple", ls="--", lw=LW_AUX_2D, alpha=0.35)
+ax.plot([-L, L], [-R, -R], color="purple", ls="--", lw=LW_AUX_2D, alpha=0.35)
+ax.text(-L * 0.96, R + 0.25, "линия фокусов rho=R", color="purple", fontsize=8)
+
+plot_hyperbola_foci(ax)
+
+# Наружное полутороидальное закрытие
+x_tor = np.linspace(-a, a, 1200)
+rho_tor = half_torus_outer_rho(x_tor)
+
+if show_outlet:
+    mask_torus = x_tor <= x_torus_out + 1e-12
+else:
+    mask_torus = np.ones_like(x_tor, dtype=bool)
+
+ax.plot(
+    x_tor[mask_torus],
+    rho_tor[mask_torus],
+    color="darkgreen",
+    lw=LW_TORUS_2D,
+    label="наружная полутороидальная перемычка",
+)
+ax.fill_between(
+    x_tor[mask_torus],
+    R,
+    rho_tor[mask_torus],
+    color="mediumseagreen",
+    alpha=0.12,
+)
+
+ax.plot(
+    x_tor[mask_torus],
+    -rho_tor[mask_torus],
+    color="darkgreen",
+    lw=LW_TORUS_2D,
+)
+ax.fill_between(
+    x_tor[mask_torus],
+    -R,
+    -rho_tor[mask_torus],
+    color="mediumseagreen",
+    alpha=0.12,
+)
+
+ax.text(
+    0,
+    R + a + 0.45,
+    "наружный полутороид: большой радиус R, малый радиус a",
+    ha="center",
+    color="darkgreen",
+    fontsize=9,
+    fontweight="bold",
+)
+
+# Размер 2a
+ax.axvline(-a, color="blue", lw=LW_AUX_2D, ls=":", alpha=0.35)
+ax.axvline(a, color="blue", lw=LW_AUX_2D, ls=":", alpha=0.35)
+
+ax.annotate(
+    "",
+    xy=(a, R + 0.18),
+    xytext=(-a, R + 0.18),
+    arrowprops=dict(arrowstyle="<->", color="gray", lw=LW_ARROW_2D),
+)
+ax.text(0, R + 0.02, "2a", ha="center", color="gray", fontsize=9, fontweight="bold")
+
+ax.text(-a, -R * 1.20, "-a", ha="center", color="blue", fontsize=9)
+ax.text(a, -R * 1.20, "a", ha="center", color="blue", fontsize=9)
+
+# Выходное окно справа — симметричная пустота
+if show_outlet:
+    ax.annotate(
+        f"симметричное пустое окно Out-1\n"
+        f"полная толщина R*R2 = {dR_total:.3f}\n"
+        f"по {dR_half:.3f} с каждой стороны rho=R",
+        xy=(x_horn_out, R),
+        xytext=(x_horn_out + 0.65, R + 1.65),
+        fontsize=9,
+        color="dimgray",
+        fontweight="bold",
+        arrowprops=dict(arrowstyle="->", color="dimgray", lw=LW_ARROW_2D),
+    )
+
+    ax.annotate(
+        "",
+        xy=(x_horn_out + 0.25, R + dR_half),
+        xytext=(x_horn_out + 0.25, R - dR_half),
+        arrowprops=dict(arrowstyle="<->", color="dimgray", lw=LW_ARROW_2D),
+    )
+
+    ax.text(
+        x_horn_out + 0.32,
+        R,
+        f"R*R2={dR_total:.3f}",
+        color="dimgray",
+        fontsize=9,
+        va="center",
+        fontweight="bold",
+    )
+
+    ax.annotate(
+        "",
+        xy=(L + 3.0, R),
+        xytext=(x_horn_out + 0.05, R),
+        arrowprops=dict(arrowstyle="->", color="dimgray", lw=LW_ARROW_2D),
+    )
+
+    ax.annotate(
+        "",
+        xy=(L + 3.0, -R),
+        xytext=(x_horn_out + 0.05, -R),
+        arrowprops=dict(arrowstyle="->", color="dimgray", lw=LW_ARROW_2D),
+    )
+
+    ax.text(
+        L + 1.5,
+        R + 0.65,
+        "осевой вывод\nэнергии ->",
+        ha="center",
+        color="dimgray",
+        fontsize=9,
+        fontweight="bold",
+    )
+else:
+    ax.text(a + 0.35, R + 0.45, "R2=0:\nвыходной щели нет", color="dimgray", fontsize=9)
+
+# Заливка внутренней области
+ax.fill_between(
+    x_left[mask_left],
+    rho_left[mask_left],
+    -rho_left[mask_left],
+    color="lightsteelblue",
+    alpha=0.08,
+)
+ax.fill_between(
+    x_right[mask_right],
+    rho_right[mask_right],
+    -rho_right[mask_right],
+    color="lightsteelblue",
+    alpha=0.08,
+)
+
+x_mid = np.linspace(-a, a, 400)
+ax.fill_between(x_mid, R, -R, color="lightsteelblue", alpha=0.04)
+
+# Оформление рисунка 1
+ax.set_xlabel("x", fontsize=12)
+ax.set_ylabel("rho", fontsize=12)
+
+ax.set_title(
+    "Псевдогиперболоид: входное окно + наружный полутороид + симметричное пустое окно вывода\n"
+    f"a={a:.3f}, b={b:.3f}, R={R:.3f}, "
+    f"R_in=R*R1={R_in:.3f}, полная dR=R*R2={dR_total:.3f}",
+    fontsize=11,
+)
+
+ax.set_aspect("equal", adjustable="box")
+ax.legend(loc="lower left", fontsize=8, framealpha=0.95)
+ax.grid(True, alpha=0.22)
+
+ax.set_xlim(-L * 1.25 - 2.2, L * 1.15 + 4.0)
+ax.set_ylim(-R * 1.45, R * 1.45)
+
+plt.tight_layout()
+plt.savefig("fig1_symmetric_empty_outlet.png", dpi=150, bbox_inches="tight")
+plt.show()
+
+
+# ============================================================
+# РИСУНОК 3: 3D
+# ============================================================
+fig = plt.figure(figsize=(16, 10))
+ax3d = fig.add_subplot(111, projection="3d")
+
+phi = np.linspace(0, 1.65 * np.pi, 120)
+phi_full = np.linspace(0, 2 * np.pi, 280)
+
+# Левая воронка
+x_lh = np.linspace(-L, -a, 220)
+Xl, PHIl = np.meshgrid(x_lh, phi)
+RHOl = r_horn(Xl)
+
+if show_inlet:
+    RHOl_draw = np.where(RHOl >= R_in - 1e-12, RHOl, np.nan)
+else:
+    RHOl_draw = RHOl
+
+ax3d.plot_surface(
+    Xl,
+    RHOl_draw * np.cos(PHIl),
+    RHOl_draw * np.sin(PHIl),
+    color="lightsteelblue",
+    alpha=0.58,
+    edgecolor="gray",
+    linewidth=0.05,
+    rstride=2,
+    cstride=2,
+)
+
+# Кромка входного окна
+if show_inlet:
+    ax3d.plot(
+        np.full_like(phi_full, x_edge_l),
+        R_in * np.cos(phi_full),
+        R_in * np.sin(phi_full),
+        color="royalblue",
+        lw=1.0,
+    )
+
+    for ph in np.linspace(0, 2 * np.pi, 12, endpoint=False):
+        y0 = 0.75 * R_in * np.cos(ph)
+        z0 = 0.75 * R_in * np.sin(ph)
+
+        ax3d.quiver(
+            x_edge_l - L * 0.22,
+            y0,
+            z0,
+            L * 0.18,
+            0,
+            0,
+            color="royalblue",
+            lw=0.9,
+            arrow_length_ratio=0.22,
+            alpha=0.9,
+        )
+
+# Правая воронка
+x_rh = np.linspace(a, L, 220)
+Xr, PHIr = np.meshgrid(x_rh, phi)
+RHOr = r_horn(Xr)
+
+if show_outlet:
+    RHOr_draw = np.where(RHOr <= rho_horn_cut + 1e-12, RHOr, np.nan)
+else:
+    RHOr_draw = RHOr
+
+ax3d.plot_surface(
+    Xr,
+    RHOr_draw * np.cos(PHIr),
+    RHOr_draw * np.sin(PHIr),
+    color="lightsteelblue",
+    alpha=0.58,
+    edgecolor="gray",
+    linewidth=0.05,
+    rstride=2,
+    cstride=2,
+)
+
+# Наружный полутороид
+theta = np.linspace(0, np.pi, 120)
+Theta, PhiT = np.meshgrid(theta, phi)
+
+Xtor = a * np.cos(Theta)
+RHOtor = R + a * np.sin(Theta)
+
+if show_outlet:
+    RHOtor_draw = np.where(Xtor <= x_torus_out + 1e-12, RHOtor, np.nan)
+else:
+    RHOtor_draw = RHOtor
+
+ax3d.plot_surface(
+    Xtor,
+    RHOtor_draw * np.cos(PhiT),
+    RHOtor_draw * np.sin(PhiT),
+    color="mediumseagreen",
+    alpha=0.62,
+    edgecolor="darkgreen",
+    linewidth=0.05,
+    rstride=2,
+    cstride=2,
+)
+
+# Выходное окно справа — отмечено красным цветом
+if show_outlet:
+    # Внутренняя красная кромка окна со стороны гиперболической воронки
+    ax3d.plot(
+        np.full_like(phi_full, x_horn_out),
+        rho_horn_cut * np.cos(phi_full),
+        rho_horn_cut * np.sin(phi_full),
+        color="red",
+        lw=2.0,
+    )
+
+    # Наружная красная кромка окна со стороны полутороида
+    ax3d.plot(
+        np.full_like(phi_full, x_torus_out),
+        rho_torus_cut * np.cos(phi_full),
+        rho_torus_cut * np.sin(phi_full),
+        color="red",
+        lw=2.0,
+    )
+
+    # Красные стрелки осевого вывода энергии
+    for ph in np.linspace(0, 2 * np.pi, 16, endpoint=False):
+        y0 = R * np.cos(ph)
+        z0 = R * np.sin(ph)
+
+        ax3d.quiver(
+            x_horn_out,
+            y0,
+            z0,
+            L * 0.55,
+            0,
+            0,
+            color="red",
+            lw=1.1,
+            arrow_length_ratio=0.18,
+            alpha=0.9,
+        )
+
+ax3d.set_xlabel("x")
+ax3d.set_ylabel("y")
+ax3d.set_zlabel("z")
+
+ax3d.set_title(
+    "3D: симметричное выходное окно относительно линии фокусов\n"
+    f"a={a:.3f}, b={b:.3f}, R={R:.3f}, "
+    f"R_in=R*R1={R_in:.3f}, полная dR=R*R2={dR_total:.3f}",
+    fontsize=11,
+)
+
+ax3d.view_init(elev=13, azim=36)
+
+mx = (R + a) * 1.08
+
+ax3d.set_xlim(-L * 1.28, L * 1.30)
+ax3d.set_ylim(-mx, mx)
+ax3d.set_zlim(-mx, mx)
+
+try:
+    ax3d.set_box_aspect((2 * L * 1.29, 2 * mx, 2 * mx))
+except Exception:
+    pass
+
+plt.tight_layout()
+plt.savefig("fig3_3d_symmetric_empty_outlet.png", dpi=150, bbox_inches="tight")
+plt.show()
+
+
+# ============================================================
+# КОНТРОЛЬНЫЙ ВЫВОД
+# ============================================================
+c = np.sqrt(a ** 2 + b ** 2)
+
+print("\n=== Геометрия ===")
+print("Гиперболическая образующая:")
+print("  верхняя: (x/a)^2 - ((rho-R)/b)^2 = 1")
+print("  нижняя: (x/a)^2 - ((rho+R)/b)^2 = 1")
+
+print(f"\nФокусы верхней гиперболы: x=±{c:.6f}, rho=R={R:.6f}")
+print(f"Фокусы нижней гиперболы: x=±{c:.6f}, rho=-R={-R:.6f}")
+
+if show_inlet:
+    print("\nВходное окно In-1:")
+    print(f"  R1 = {R1:.6f}")
+    print(f"  R_in = R*R1 = {R_in:.6f}")
+    print(f"  плоскость входного окна x = {x_edge_l:.6f}")
+else:
+    print("\nВходное окно In-1 отсутствует: R1=0.")
+
+print("\nЭкваториальное окно |x|<=a закрыто СНАРУЖИ полутороидом.")
+print(f"Полутороид: большой радиус R={R:.6f}, малый радиус a={a:.6f}.")
+print("Полный тороид не строится.")
+print("Точки соединения полутороида с гиперболическими воронками отдельно не рисуются.")
+
+if show_outlet:
+    print("\nВыходное окно Out-1:")
+    print(f"  R2 = {R2:.6f}")
+    print(f"  dR_total = R*R2 = {dR_total:.6f}")
+    print(f"  dR_half = dR_total/2 = {dR_half:.6f}")
+    print("  окно симметрично относительно линии фокусов rho=R")
+    print(f"  со стороны гиперболической воронки открыто: rho от {rho_horn_cut:.6f} до {R:.6f}")
+    print(f"  со стороны полутороида открыто: rho от {R:.6f} до {rho_torus_cut:.6f}")
+    print(f"  граница правой гиперболической стенки: x = {x_horn_out:.6f}")
+    print(f"  граница правого участка полутороида: x = {x_torus_out:.6f}")
+    print("  окно вывода показано как пустота, без красной заливки")
+else:
+    print("\nВыходное окно Out-1 отсутствует: R2=0.")
+    print("Правая воронка и полутороид соединены без щели.")
+
+print("\nСохранены файлы:")
+print("  fig1_symmetric_empty_outlet.png")
+print("  fig3_3d_symmetric_empty_outlet.png")
