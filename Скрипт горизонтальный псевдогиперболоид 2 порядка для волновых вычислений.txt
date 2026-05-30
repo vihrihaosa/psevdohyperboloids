@@ -1,0 +1,203 @@
+# -*- coding: utf-8 -*-
+"""
+Псевдогиперболоид 2-го порядка ГОРИЗОНТАЛЬНОГО типа.
+2D меридиональное сечение + 3D поверхность вращения вокруг оси Y.
++ Полукольца радиуса a в 2D, закрывающие два отверстия,
+  -> при вращении становятся полусферами радиуса a.
+"""
+
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ============================================================
+# ПАРАМЕТРЫ
+# ============================================================
+a = 0.5
+b = 1.0
+R = 15.0
+npts = 900
+NPHI = 220
+SURFACE_ALPHA = 0.30
+CAP_ALPHA = 0.55
+
+
+# ============================================================
+# ГЕОМЕТРИЯ
+# ============================================================
+def c_focus(a, b):
+    return math.sqrt(a * a + b * b)
+
+
+def x_horizontal(u, a, b, R):
+    u = np.asarray(u, dtype=float)
+    return a * np.sqrt(1.0 + ((R - np.abs(u)) / b) ** 2)
+
+
+u_axis = np.linspace(-R, R, npts)
+if not np.any(np.isclose(u_axis, 0.0, atol=1e-14)):
+    u_axis = np.sort(np.concatenate([u_axis, [0.0]]))
+d = x_horizontal(u_axis, a, b, R)
+
+c = c_focus(a, b)
+
+
+# ============================================================
+# 2D МЕРИДИОНАЛЬНОЕ СЕЧЕНИЕ
+# ============================================================
+fig2d, ax = plt.subplots(figsize=(10, 8))
+
+# Образующая и её зеркало.
+ax.plot( d, u_axis, color='darkred', lw=2.0, label='Образующая')
+ax.plot(-d, u_axis, color='darkred', lw=2.0)
+
+# --- Полукольца радиуса a, закрывающие два отверстия в горловинах ---
+# Горловины находятся в точках (±a, ±R) при u = ±R (минимум радиуса = a).
+# Полукольцо в 2D = полуокружность радиуса a в плоскости (x, y),
+# центрированная в (0, +R) и (0, -R).
+# При вращении вокруг оси Y каждая такая полуокружность даёт ПОЛУСФЕРУ радиуса a.
+
+theta = np.linspace(0.0, np.pi, 200)  # 0..π — полукольцо
+
+# Верхняя горловина: центр (0, +R), полукольцо выгнуто вверх (y >= R).
+cap_top_x = a * np.cos(theta)
+cap_top_y = R + a * np.sin(theta)
+ax.plot(cap_top_x, cap_top_y, color='steelblue', lw=2.0,
+        label='Полукольцо радиуса a (-> полусфера в 3D)')
+
+# Нижняя горловина: центр (0, -R), полукольцо выгнуто вниз (y <= -R).
+cap_bot_x = a * np.cos(theta)
+cap_bot_y = -R - a * np.sin(theta)
+ax.plot(cap_bot_x, cap_bot_y, color='steelblue', lw=2.0)
+
+# Служебные линии.
+ax.axvline(0.0, color='black', linestyle='--', linewidth=1.0)
+ax.axhline(0.0, color='black', linestyle='--', linewidth=1.05)
+ax.axhline(R,   color='black', linestyle='--', linewidth=1.0)
+ax.axhline(-R,  color='black', linestyle='--', linewidth=1.0)
+
+rmax = float(np.max(d))
+ax.text(0.98, 0.52,
+        'Центральная горизонтальная\nось симметрии y = 0',
+        transform=ax.transAxes, ha='right', va='bottom', fontsize=8)
+ax.text(0.98, 0.88,
+        'Фокальная ось\nобразующей y = R',
+        transform=ax.transAxes, ha='right', va='top', fontsize=9)
+
+# Стрелка R.
+xR = -0.82 * rmax
+ax.annotate('', xy=(xR, R), xytext=(xR, 0.0),
+            arrowprops=dict(arrowstyle='<->', lw=1.15, color='black'))
+ax.text(xR - 0.03 * rmax, 0.5 * R, 'R', ha='right', va='center', fontsize=12)
+
+# Геометрические фокусы образующей: (±c, ±R).
+foci = [(xf, yf) for xf in (-c, +c) for yf in (-R, +R)]
+xs = [p[0] for p in foci]; ys = [p[1] for p in foci]
+ax.scatter(xs, ys, s=30, marker='o',
+           facecolors='white', edgecolors='darkgreen',
+           linewidths=1.25, zorder=8,
+           label='Фокусы порождающей гиперболы')
+for xf, yf in foci:
+    ax.text(xf + 0.02 * rmax, yf, 'F',
+            fontsize=8, color='darkgreen', va='center')
+
+ax.set_title(f'Горизонтальный тип, порядок 2: 2D сечение + полукольца, a={a}, b={b}, R={R}')
+ax.set_xlabel('Радиальная координата')
+ax.set_ylabel('Координата вдоль общей оси')
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim(-1.10 * rmax, 1.10 * rmax)
+ax.set_ylim(-(R + a) * 1.08, (R + a) * 1.08)
+ax.grid(True, alpha=0.25)
+ax.legend(loc='lower right', fontsize=8)
+fig2d.tight_layout()
+plt.show()
+
+
+# ============================================================
+# 3D ПОВЕРХНОСТЬ ВРАЩЕНИЯ
+# Ось вращения — вертикальная (Y).
+# Точка (u, d(u)) -> (d*cos φ, u, d*sin φ).
+# ============================================================
+phi = np.linspace(0.0, 2.0 * np.pi, NPHI)
+
+# --- Основная поверхность (псевдогиперболоид) ---
+U, Phi = np.meshgrid(u_axis, phi, indexing='ij')
+RR = np.tile(d[:, None], (1, phi.size))
+X = RR * np.cos(Phi)
+Y = U
+Z = RR * np.sin(Phi)
+
+fig3d = plt.figure(figsize=(10, 9))
+ax3d = fig3d.add_subplot(111, projection='3d')
+
+ax3d.plot_surface(X, Y, Z,
+                  linewidth=0, edgecolor='none',
+                  alpha=SURFACE_ALPHA, antialiased=False, shade=True,
+                  color='lightcoral')
+
+# --- Полусферы радиуса a, закрывающие две горловины ---
+# Полукольцо радиуса a при вращении -> полусфера радиуса a.
+# Верхняя полусфера: центр (0, +R, 0), выгнута вверх (y >= R).
+# Нижняя полусфера: центр (0, -R, 0), выгнута вниз (y <= -R).
+theta_cap = np.linspace(0.0, np.pi / 2.0, 60)  # 0..π/2  ->  y от R до R+a
+Th, Ph = np.meshgrid(theta_cap, phi, indexing='ij')
+
+# Верхняя полусфера.
+Xc =  a * np.cos(Th) * np.cos(Ph)
+Yc =  R + a * np.sin(Th)
+Zc =  a * np.cos(Th) * np.sin(Ph)
+ax3d.plot_surface(Xc, Yc, Zc,
+                  linewidth=0, edgecolor='none',
+                  alpha=CAP_ALPHA, antialiased=True, shade=True,
+                  color='steelblue')
+
+# Нижняя полусфера.
+Xc2 =  a * np.cos(Th) * np.cos(Ph)
+Yc2 = -R - a * np.sin(Th)
+Zc2 =  a * np.cos(Th) * np.sin(Ph)
+ax3d.plot_surface(Xc2, Yc2, Zc2,
+                  linewidth=0, edgecolor='none',
+                  alpha=CAP_ALPHA, antialiased=True, shade=True,
+                  color='steelblue')
+
+# Меридиональное сечение поверх 3D (для контроля).
+ax3d.plot( d, u_axis, np.zeros_like(u_axis), color='black', lw=1.2)
+ax3d.plot(-d, u_axis, np.zeros_like(u_axis), color='black', lw=1.2)
+ax3d.plot( cap_top_x, cap_top_y, np.zeros_like(cap_top_x), color='black', lw=1.2)
+ax3d.plot(-cap_top_x, cap_top_y, np.zeros_like(cap_top_x), color='black', lw=1.2)
+ax3d.plot( cap_bot_x, cap_bot_y, np.zeros_like(cap_bot_x), color='black', lw=1.2)
+ax3d.plot(-cap_bot_x, cap_bot_y, np.zeros_like(cap_bot_x), color='black', lw=1.2)
+
+# Ось вращения (вертикаль Y).
+y_axis_line = np.linspace(-(R + a) * 1.1, (R + a) * 1.1, 50)
+ax3d.plot(np.zeros_like(y_axis_line), y_axis_line, np.zeros_like(y_axis_line),
+          color='red', lw=2.5, label='Ось вращения')
+
+# Единый масштаб осей.
+all_x = [X.min(), X.max(), Xc.min(), Xc.max(), Xc2.min(), Xc2.max()]
+all_y = [Y.min(), Y.max(), Yc.min(), Yc.max(), Yc2.min(), Yc2.max()]
+all_z = [Z.min(), Z.max(), Zc.min(), Zc.max(), Zc2.min(), Zc2.max()]
+xmin, xmax = min(all_x), max(all_x)
+ymin, ymax = min(all_y), max(all_y)
+zmin, zmax = min(all_z), max(all_z)
+xmid = 0.5 * (xmin + xmax); ymid = 0.5 * (ymin + ymax); zmid = 0.5 * (zmin + zmax)
+half = 0.5 * max(xmax - xmin, ymax - ymin, zmax - zmin)
+ax3d.set_xlim(xmid - half, xmid + half)
+ax3d.set_ylim(ymid - half, ymid + half)
+ax3d.set_zlim(zmid - half, zmid + half)
+try:
+    ax3d.set_box_aspect((1.0, 1.0, 1.0))
+except Exception:
+    pass
+try:
+    ax3d.set_proj_type('ortho')
+except Exception:
+    pass
+
+ax3d.set_title(f'Горизонтальный тип, порядок 2: 3D поверхность + полусферы a, a={a}, b={b}, R={R}')
+ax3d.set_xlabel('X')
+ax3d.set_ylabel('Y (ось вращения)')
+ax3d.set_zlabel('Z')
+ax3d.legend(loc='upper right', fontsize=8)
+fig3d.tight_layout()
+plt.show()
