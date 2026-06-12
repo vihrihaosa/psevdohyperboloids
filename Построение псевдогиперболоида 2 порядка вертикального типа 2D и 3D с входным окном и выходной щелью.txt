@@ -1,0 +1,419 @@
+# -*- coding: utf-8 -*-
+"""
+Открытый вертикальный псевдогиперболоид 2-го порядка
+с отображением:
+
+1) 2D-сечения:
+   - двух открытых гиперболических воронок,
+   - входного окна In-1,
+   - проекции кольцевой щели R2,
+   - 4 внешних фокусов.
+
+2) 3D-формы:
+   - двух открытых воронок,
+   - входного окна In-1,
+   - настоящей кольцевой щели R2 на правой воронке,
+   - 2 внешних фокальных колец.
+
+Все подписи на русском языке.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+# ============================================================
+# ВХОДНЫЕ ПАРАМЕТРЫ
+# ============================================================
+
+a = 1.0
+b = 1.0
+R = 1.0
+R1 = 0.10
+R2 = 0.3
+
+# ============================================================
+# СЛУЖЕБНЫЕ НАСТРОЙКИ
+# ============================================================
+
+N_X = 900
+N_PHI = 240
+ПОКАЗАТЬ_ВСПОМОГАТЕЛЬНЫЕ_ЛИНИИ = True
+
+plt.rcParams["font.family"] = "DejaVu Sans"
+
+# ============================================================
+# ПРОИЗВОДНЫЕ ВЕЛИЧИНЫ
+# ============================================================
+
+c = np.sqrt(a**2 + b**2)
+L = a * np.sqrt(1.0 + (R / b)**2)
+
+# Входное окно
+R_in = R * R1
+R_in = np.clip(R_in, 0.0, R)
+
+# Для левой воронки: положение входного окна там, где радиус воронки равен R_in
+if R_in <= 0:
+    x_in = -L
+else:
+    x_in = -a * np.sqrt(1.0 + ((R - R_in) / b)**2)
+
+# Кольцевая щель R2:
+# Полная толщина по радиусу:
+dR_total = R * R2
+dR_half = 0.5 * dR_total
+
+# Защита от вырожденных значений
+dR_half = np.clip(dR_half, 0.0, 0.95 * R)
+
+# Щель на правой гиперболической ветви:
+# от точки (x=a, rho=R) до точки, где rho = R - dR_half
+# x_slot_end = a * sqrt(1 + (dR_half/b)^2)
+x_slot_start = a
+x_slot_end = a * np.sqrt(1.0 + (dR_half / b)**2)
+
+rho_slot_start = R
+rho_slot_end = R - dR_half
+
+# ============================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
+
+def rho_horn(abs_x):
+    """
+    Радиус гиперболической воронки:
+        rho = R - b * sqrt((|x|/a)^2 - 1)
+    Определена при |x| >= a.
+    """
+    return R - b * np.sqrt((abs_x / a)**2 - 1.0)
+
+
+def surface_of_revolution(x_values, r_values, phi_values):
+    """
+    Поверхность вращения вокруг оси x.
+    """
+    X = np.outer(x_values, np.ones_like(phi_values))
+    Y = np.outer(r_values, np.cos(phi_values))
+    Z = np.outer(r_values, np.sin(phi_values))
+    return X, Y, Z
+
+
+# ============================================================
+# 2D ГЕОМЕТРИЯ
+# ============================================================
+
+# Левая воронка: от входного окна до горла
+x_left = np.linspace(x_in, -a, N_X)
+rho_left = rho_horn(np.abs(x_left))
+
+# Правая воронка: от горла до дальнего конца
+x_right = np.linspace(a, L, N_X)
+rho_right = rho_horn(np.abs(x_right))
+
+# Верхняя и нижняя ветви
+y_left_upper = rho_left
+y_left_lower = -rho_left
+
+y_right_upper = rho_right
+y_right_lower = -rho_right
+
+# Участок щели R2 в 2D — это проекция кольцевой щели на сечение:
+# две короткие симметричные выделенные дуги на правой воронке
+x_slot = np.linspace(x_slot_start, x_slot_end, 250)
+rho_slot = rho_horn(x_slot)
+
+# 4 внешних фокуса в 2D
+foci_2d = np.array([
+    [-c,  R],
+    [ c,  R],
+    [-c, -R],
+    [ c, -R],
+])
+
+focus_names = ["Ф1", "Ф2", "Ф3", "Ф4"]
+
+# ============================================================
+# ПЕЧАТЬ ПАРАМЕТРОВ
+# ============================================================
+
+print("ПАРАМЕТРЫ ГЕОМЕТРИИ")
+print(f"a = {a}")
+print(f"b = {b}")
+print(f"R = {R}")
+print(f"R1 = {R1}")
+print(f"R2 = {R2}")
+print()
+
+print("ПРОИЗВОДНЫЕ ВЕЛИЧИНЫ")
+print(f"c = sqrt(a^2 + b^2) = {c:.6f}")
+print(f"L = a*sqrt(1 + (R/b)^2) = {L:.6f}")
+print()
+
+print("ВХОДНОЕ ОКНО In-1")
+print(f"R_in = R*R1 = {R_in:.6f}")
+print(f"x_in = {x_in:.6f}")
+print()
+
+print("КОЛЬЦЕВАЯ ЩЕЛЬ R2")
+print(f"dR_total = R*R2 = {dR_total:.6f}")
+print(f"dR_half = dR_total/2 = {dR_half:.6f}")
+print(f"начало щели: x = {x_slot_start:.6f}, rho = {rho_slot_start:.6f}")
+print(f"конец щели:  x = {x_slot_end:.6f}, rho = {rho_slot_end:.6f}")
+print()
+
+print("ВНЕШНИЕ ФОКУСЫ В 2D")
+print(f"Ф1 = (-c, +R) = ({-c:.6f}, { R:.6f})")
+print(f"Ф2 = (+c, +R) = ({ c:.6f}, { R:.6f})")
+print(f"Ф3 = (-c, -R) = ({-c:.6f}, {-R:.6f})")
+print(f"Ф4 = (+c, -R) = ({ c:.6f}, {-R:.6f})")
+print()
+
+print("ВНЕШНИЕ ФОКАЛЬНЫЕ КОЛЬЦА В 3D")
+print(f"левое кольцо:  x = {-c:.6f}, радиус = {R:.6f}")
+print(f"правое кольцо: x = { c:.6f}, радиус = {R:.6f}")
+
+# ============================================================
+# РИСУНОК 1: 2D-СЕЧЕНИЕ
+# ============================================================
+
+fig2d, ax = plt.subplots(figsize=(14, 8))
+
+# Левая открытая воронка
+ax.plot(x_left, y_left_upper, linewidth=2.6, label="левая открытая воронка")
+ax.plot(x_left, y_left_lower, linewidth=2.6)
+
+# Правая открытая воронка
+ax.plot(x_right, y_right_upper, linewidth=2.6, label="правая открытая воронка")
+ax.plot(x_right, y_right_lower, linewidth=2.6)
+
+# Входное окно In-1
+ax.plot([x_in, x_in], [-R_in, R_in], linewidth=5, label="входное окно In-1")
+ax.text(
+    x_in,
+    R_in + 0.10,
+    f"In-1\nR1={R1:.2f}\nRвх={R_in:.3f}",
+    ha="center",
+    va="bottom",
+    fontsize=11,
+    weight="bold"
+)
+
+# Проекция кольцевой щели R2 на 2D-сечение
+ax.plot(
+    x_slot, rho_slot,
+    linewidth=6,
+    solid_capstyle="round",
+    label="проекция кольцевой щели R2"
+)
+ax.plot(
+    x_slot, -rho_slot,
+    linewidth=6,
+    solid_capstyle="round"
+)
+
+# Границы щели
+ax.scatter(
+    [x_slot_start, x_slot_end, x_slot_start, x_slot_end],
+    [rho_slot_start, rho_slot_end, -rho_slot_start, -rho_slot_end],
+    s=70,
+    zorder=10
+)
+
+ax.text(
+    0.5 * (x_slot_start + x_slot_end),
+    0.5 * (rho_slot_start + rho_slot_end) + 0.12,
+    f"R2\nкольцевая щель\nΔR={dR_total:.3f}",
+    ha="center",
+    fontsize=11,
+    weight="bold"
+)
+
+# 4 внешних фокуса
+ax.scatter(foci_2d[:, 0], foci_2d[:, 1], s=130, zorder=10, label="4 внешних фокуса")
+
+for i, (xf, yf) in enumerate(foci_2d):
+    dy = 0.08 if yf > 0 else -0.14
+    ax.text(
+        xf + 0.05,
+        yf + dy,
+        f"{focus_names[i]} ({xf:.2f}; {yf:.2f})",
+        fontsize=10.5,
+        weight="bold"
+    )
+
+# Вспомогательные линии
+if ПОКАЗАТЬ_ВСПОМОГАТЕЛЬНЫЕ_ЛИНИИ:
+    ax.axvline(-c, linestyle=":", linewidth=1.2, label="плоскость x = -c")
+    ax.axvline(c, linestyle=":", linewidth=1.2, label="плоскость x = +c")
+    ax.axhline(R, linestyle=":", linewidth=1.1, label="уровень +R")
+    ax.axhline(-R, linestyle=":", linewidth=1.1, label="уровень -R")
+    ax.axvline(-a, linestyle="--", linewidth=1.0, alpha=0.6)
+    ax.axvline(a, linestyle="--", linewidth=1.0, alpha=0.6)
+    ax.axhline(0.0, color="black", linewidth=1.0, alpha=0.35)
+    ax.axvline(0.0, color="black", linewidth=1.0, alpha=0.35)
+
+ax.text(
+    0.0,
+    0.06,
+    "между воронками замыкания нет",
+    ha="center",
+    fontsize=11.5,
+    weight="bold"
+)
+
+ax.set_title(
+    "2D-сечение: входное окно In-1 и проекция кольцевой щели R2",
+    fontsize=15
+)
+ax.set_xlabel("ось x", fontsize=13)
+ax.set_ylabel("подписанный радиус ρ", fontsize=13)
+ax.set_aspect("equal", adjustable="box")
+ax.grid(True, alpha=0.30)
+ax.legend(loc="best", fontsize=9)
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# 3D ГЕОМЕТРИЯ
+# ============================================================
+
+phi = np.linspace(0.0, 2.0 * np.pi, N_PHI)
+
+# Левая воронка
+Xl, Yl, Zl = surface_of_revolution(x_left, rho_left, phi)
+
+# Правая воронка делится на две части:
+# 1) сама кольцевая щель как выделенная поверхность
+# 2) остальная часть правой воронки
+x_right_rest = np.linspace(x_slot_end, L, N_X)
+rho_right_rest = rho_horn(np.abs(x_right_rest))
+Xr_rest, Yr_rest, Zr_rest = surface_of_revolution(x_right_rest, rho_right_rest, phi)
+
+# Настоящая кольцевая щель R2 — вращение участка гиперболической ветви
+x_slot_3d = np.linspace(x_slot_start, x_slot_end, 120)
+rho_slot_3d = rho_horn(x_slot_3d)
+Xslot, Yslot, Zslot = surface_of_revolution(x_slot_3d, rho_slot_3d, phi)
+
+# Входное окно In-1 в 3D
+phi_ring = np.linspace(0.0, 2.0 * np.pi, 600)
+in_x_ring = np.full_like(phi_ring, x_in)
+in_y_ring = R_in * np.cos(phi_ring)
+in_z_ring = R_in * np.sin(phi_ring)
+
+# Границы кольцевой щели R2 в 3D
+slot_outer_x = np.full_like(phi_ring, x_slot_start)
+slot_outer_y = rho_slot_start * np.cos(phi_ring)
+slot_outer_z = rho_slot_start * np.sin(phi_ring)
+
+slot_inner_x = np.full_like(phi_ring, x_slot_end)
+slot_inner_y = rho_slot_end * np.cos(phi_ring)
+slot_inner_z = rho_slot_end * np.sin(phi_ring)
+
+# 2 внешних фокальных кольца
+ring1_x = np.full_like(phi_ring, -c)
+ring1_y = R * np.cos(phi_ring)
+ring1_z = R * np.sin(phi_ring)
+
+ring2_x = np.full_like(phi_ring, c)
+ring2_y = R * np.cos(phi_ring)
+ring2_z = R * np.sin(phi_ring)
+
+# ============================================================
+# РИСУНОК 2: 3D-ФОРМА
+# ============================================================
+
+fig3d = plt.figure(figsize=(14, 9))
+ax3 = fig3d.add_subplot(111, projection="3d")
+
+# Левая воронка
+ax3.plot_surface(Xl, Yl, Zl, alpha=0.35, linewidth=0, antialiased=True)
+
+# Правая воронка без щели
+ax3.plot_surface(Xr_rest, Yr_rest, Zr_rest, alpha=0.35, linewidth=0, antialiased=True)
+
+# Настоящая кольцевая щель R2
+ax3.plot_surface(Xslot, Yslot, Zslot, alpha=0.85, linewidth=0, antialiased=True)
+
+# Границы щели
+ax3.plot(slot_outer_x, slot_outer_y, slot_outer_z, linewidth=3, label="внешняя граница щели R2")
+ax3.plot(slot_inner_x, slot_inner_y, slot_inner_z, linewidth=3, label="внутренняя граница щели R2")
+
+# Входное окно
+ax3.plot(in_x_ring, in_y_ring, in_z_ring, linewidth=4, label="входное окно In-1")
+
+# Внешние фокальные кольца
+ax3.plot(ring1_x, ring1_y, ring1_z, linewidth=3.5, label="внешнее фокальное кольцо x = -c")
+ax3.plot(ring2_x, ring2_y, ring2_z, linewidth=3.5, label="внешнее фокальное кольцо x = +c")
+
+# Подписи
+ax3.text(x_in, R_in * 1.18, 0, "In-1", fontsize=12, weight="bold")
+ax3.text(0.5 * (x_slot_start + x_slot_end), rho_slot_start * 1.08, 0, "R2", fontsize=12, weight="bold")
+ax3.text(-c, R * 1.08, 0, "кольцо x = -c", fontsize=10.5)
+ax3.text(c, R * 1.08, 0, "кольцо x = +c", fontsize=10.5)
+ax3.text(0.0, 0.0, 0.08, "замыкания нет", fontsize=11, ha="center")
+
+ax3.set_title(
+    "3D-форма: настоящая кольцевая щель R2 на правой воронке",
+    fontsize=14
+)
+ax3.set_xlabel("ось x", fontsize=12)
+ax3.set_ylabel("ось y", fontsize=12)
+ax3.set_zlabel("ось z", fontsize=12)
+
+ax3.set_xlim(-L * 1.05, L * 1.05)
+ax3.set_ylim(-R * 1.30, R * 1.30)
+ax3.set_zlim(-R * 1.30, R * 1.30)
+
+try:
+    ax3.set_box_aspect((2 * L, 2.6 * R, 2.6 * R))
+except Exception:
+    pass
+
+ax3.view_init(elev=24, azim=-57)
+ax3.legend(loc="upper left", fontsize=8.5)
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# РИСУНОК 3: ТОЛЬКО ОКНА И ФОКАЛЬНЫЕ КОЛЬЦА
+# ============================================================
+
+fig4 = plt.figure(figsize=(12, 8))
+ax4 = fig4.add_subplot(111, projection="3d")
+
+# Входное окно
+ax4.plot(in_x_ring, in_y_ring, in_z_ring, linewidth=4, label="входное окно In-1")
+
+# Кольцевая щель R2 как выделенная поверхность
+ax4.plot_surface(Xslot, Yslot, Zslot, alpha=0.85, linewidth=0, antialiased=True)
+ax4.plot(slot_outer_x, slot_outer_y, slot_outer_z, linewidth=3, label="внешняя граница щели R2")
+ax4.plot(slot_inner_x, slot_inner_y, slot_inner_z, linewidth=3, label="внутренняя граница щели R2")
+
+# Фокальные кольца
+ax4.plot(ring1_x, ring1_y, ring1_z, linewidth=3.5, label="левое внешнее фокальное кольцо")
+ax4.plot(ring2_x, ring2_y, ring2_z, linewidth=3.5, label="правое внешнее фокальное кольцо")
+
+ax4.text(x_in, R_in * 1.20, 0, "In-1", fontsize=12, weight="bold")
+ax4.text(0.5 * (x_slot_start + x_slot_end), rho_slot_start * 1.10, 0, "R2", fontsize=12, weight="bold")
+ax4.text(-c, R * 1.10, 0, "фокальное кольцо x=-c", fontsize=10.5)
+ax4.text(c, R * 1.10, 0, "фокальное кольцо x=+c", fontsize=10.5)
+
+ax4.set_title("Окна и внешние фокальные кольца", fontsize=14)
+ax4.set_xlabel("ось x", fontsize=12)
+ax4.set_ylabel("ось y", fontsize=12)
+ax4.set_zlabel("ось z", fontsize=12)
+
+ax4.set_xlim(-L * 1.05, L * 0.70)
+ax4.set_ylim(-R * 1.30, R * 1.30)
+ax4.set_zlim(-R * 1.30, R * 1.30)
+
+try:
+    ax4.set_box_aspect((1.8 * L, 2.6 * R, 2.6 * R))
+except Exception:
+    pass
+
+ax4.view_init(elev=26, azim=-61)
+ax4.legend(loc="upper left", fontsize=8.8)
+plt.tight_layout()
+plt.show() 
